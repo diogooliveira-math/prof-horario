@@ -25,6 +25,8 @@ listener "tcp" {
   tls_disable = 1
 }
 
-# Set to true only if the host kernel forbids mlock (some CI environments).
-# Never set to true in production — it allows secrets to hit swap.
-disable_mlock = false
+# Windows Docker Desktop (WSL2) does not support mlockall(2) even with
+# IPC_LOCK — Vault crashes on startup if this is false.  Set to true for
+# local dev on Windows.  In production on a real Linux host with IPC_LOCK
+# support, flip back to false so secrets cannot hit swap.
+disable_mlock = true

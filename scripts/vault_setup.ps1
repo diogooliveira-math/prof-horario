@@ -160,7 +160,22 @@ function Initialize-Vault {
     $initResult = Invoke-VaultCmd -VaultArgs @('operator', 'init',
         '-key-shares=5', '-key-threshold=3', '-format=json')
 
+    if ($LASTEXITCODE -ne 0) {
+        Write-Die "vault operator init failed (exit $LASTEXITCODE). Is the container actually running? Run: docker logs $VaultContainer"
+    }
+
+    # $initResult may be a string array (one line per element) — join before parsing
+    $initJson = ($initResult -join '') | ConvertFrom-Json -ErrorAction SilentlyContinue
+    if (-not $initJson -or -not $initJson.root_token) {
+        Write-Die "vault operator init returned unexpected output. Container may be restarting. Raw output:`n$($initResult -join `"`n`")"
+    }
+
+    # Write the raw output (already valid JSON) so nothing is lost
     $initResult | Set-Content -Path $InitOutput -Encoding UTF8
+
+    if (-not (Test-Path $InitOutput) -or (Get-Item $InitOutput).Length -eq 0) {
+        Write-Die "Failed to write $InitOutput — file missing or empty after init."
+    }
 
     Write-Success "Vault initialized. Keys saved to $InitOutput"
     Write-Host ''
