@@ -2,6 +2,11 @@
 
 __pycache__/
 .env
+.env.new
+.env.vault
+
+# Vault init output — contains unseal keys and root token. NEVER commit.
+scripts/.vault-init.json
 .pytest_cache/
 
 
