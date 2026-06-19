@@ -10,6 +10,11 @@ services:
       - ./tests:/app/tests
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/prof_db
+      # Inovar credentials — supply via .env file or shell environment.
+      # Never commit real values here.
+      - INOVAR_USERNAME=${INOVAR_USERNAME}
+      - INOVAR_PASSWORD=${INOVAR_PASSWORD}
+      - INOVAR_URL=${INOVAR_URL:-https://epralima.inovarmais.com/alunos/Inicial.wgx}
     depends_on:
       db:
         condition: service_healthy

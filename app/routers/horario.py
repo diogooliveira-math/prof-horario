@@ -2,15 +2,22 @@
 Sets up the logic for the Horario Router, so it later connects to the fastapi instance.
 It defines the basic logic.
 """
+import logging
+from typing import Literal
 from uuid import UUID
-from fastapi import APIRouter, Depends, status
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings, get_settings
 from app.database import get_db_session
 from app.exceptions import DuplicateHorarioError, HorarioNotFoundError
 from app.models.horario import Horario
 from app.repositories.horario import HorarioRepository
 from app.schemas.horario import HorarioCreateSchema, HorarioReadSchema
+from app.services.inovar_mapper import map_inovar_to_horarios
+from app.services.inovar_scraper import InovarScraperService
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/horarios",
@@ -76,3 +83,69 @@ async def delete_horario(horario_id: UUID, db: AsyncSession = Depends(get_db_ses
         raise HorarioNotFoundError(horario_id)
     await repo.delete(horario)
     await db.commit()
+
+
+@router.post("/sync", status_code=status.HTTP_200_OK)
+async def sync_horarios(
+    week: Literal["current", "next"] = Query(default="next"),
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Scrape the Inovar schedule for *week* and persist new slots.
+
+    Returns a summary dict::
+
+        {"inserted": int, "skipped": int, "errors": int}
+
+    Duplicate slots (same class_name + lesson_date + start_time) are counted
+    as "skipped" and never written twice.  A single DB commit covers all
+    insertions so the operation is atomic.
+
+    Raises:
+        InovarAuthError          (401) — credentials rejected or form absent.
+        InovarNavigationError    (502) — Playwright nav step failed.
+        InovarEmptyScheduleError (200) — week is valid but has no lessons.
+    """
+    scraper = InovarScraperService(
+        username=settings.inovar_username,
+        password=settings.inovar_password.get_secret_value(),
+        inovar_url=settings.inovar_url,
+    )
+
+    raw_schedule = await scraper.scrape_week(week)
+    slots = map_inovar_to_horarios(raw_schedule)
+
+    repo = HorarioRepository(db)
+    inserted = skipped = errors = 0
+
+    for slot in slots:
+        dedupe_keys = {
+            "class_name":  slot["class_name"],
+            "lesson_date": slot["lesson_date"],
+            "start_time":  slot["start_time"],
+        }
+
+        if await repo.exists(dedupe_keys):
+            skipped += 1
+            continue
+
+        new_horario = Horario(
+            class_name=slot["class_name"],
+            classroom=slot.get("classroom"),
+            module_ref=slot.get("module_ref"),
+            description=slot["description"],
+            lesson_date=slot["lesson_date"],
+            start_time=slot["start_time"],
+            end_time=slot["end_time"],
+        )
+        await repo.add(new_horario)
+        inserted += 1
+
+    await db.commit()
+
+    logger.info(
+        "sync_horarios week=%s: inserted=%d skipped=%d errors=%d",
+        week, inserted, skipped, errors,
+    )
+
+    return {"inserted": inserted, "skipped": skipped, "errors": errors}
