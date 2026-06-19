@@ -13,8 +13,11 @@ DATABASE_URL = os.getenv(
 
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  
-    future=True
+    echo=False,
+    future=True,
+    # Test each connection before checkout so stale connections after a
+    # PostgreSQL restart are transparently replaced instead of raising.
+    pool_pre_ping=True,
 )
 
 AsyncSessionLocal = async_sessionmaker(

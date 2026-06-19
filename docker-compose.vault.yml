@@ -1,5 +1,3 @@
-version: "3.8"
-
 # docker-compose.vault.yml
 #
 # Run ALONGSIDE docker-compose.yml — do NOT merge into it.
