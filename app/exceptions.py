@@ -95,3 +95,42 @@ class InovarEmptyScheduleError(DomainError):
         message: str = "Inovar returned no schedule events for the requested week.",
     ):
         super().__init__(message)
+
+
+class VaultUnavailableError(DomainError):
+    """Raised when the Vault server cannot be reached (connection refused, timeout)."""
+
+    status_code = 503
+    error_code = "VAULT_UNAVAILABLE"
+
+    def __init__(
+        self,
+        message: str = "HashiCorp Vault is unreachable. Ensure the Vault server is running and unsealed.",
+    ):
+        super().__init__(message)
+
+
+class VaultAuthError(DomainError):
+    """Raised when Vault rejects the AppRole credentials (Forbidden on login)."""
+
+    status_code = 401
+    error_code = "VAULT_AUTH_ERROR"
+
+    def __init__(
+        self,
+        message: str = "Vault AppRole authentication failed: role-id or secret-id was rejected.",
+    ):
+        super().__init__(message)
+
+
+class VaultSecretNotFoundError(DomainError):
+    """Raised when a Vault read targets a path that does not exist."""
+
+    status_code = 404
+    error_code = "VAULT_SECRET_NOT_FOUND"
+
+    def __init__(
+        self,
+        message: str = "The requested secret path does not exist in Vault.",
+    ):
+        super().__init__(message)
