@@ -68,7 +68,7 @@ def test_scraper_stores_credentials():
     from app.services.inovar_scraper import InovarScraperService
     svc = InovarScraperService(username="prof", password="secret", inovar_url="https://x.com")
     assert svc.username == "prof"
-    assert svc.password == "secret"
+    assert svc.password.get_secret_value() == "secret"
 
 
 def test_scraper_rejects_invalid_week_literal():

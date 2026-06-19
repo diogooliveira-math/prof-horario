@@ -297,6 +297,7 @@ def test_vault_unavailable_error_returns_503_json_response():
         "The DomainError handler should use VaultUnavailableError.status_code."
     )
     body = resp.json()
-    assert "error_code" in body or "detail" in body, (
+    # Our error handler wraps the code under {"error": {"code": ..., "message": ...}}
+    assert "error" in body or "detail" in body, (
         f"Response body has no error info: {body}"
     )

@@ -10,14 +10,18 @@ services:
       - ./tests:/app/tests
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/prof_db
-      # Inovar credentials — supply via .env file or shell environment.
-      # Never commit real values here.
-      - INOVAR_USERNAME=${INOVAR_USERNAME}
-      - INOVAR_PASSWORD=${INOVAR_PASSWORD}
+      - VAULT_ADDR=${VAULT_ADDR:-}
+      - VAULT_ROLE_ID=${VAULT_ROLE_ID:-}
+      - VAULT_SECRET_ID=${VAULT_SECRET_ID:-}
+      - INOVAR_USERNAME=${INOVAR_USERNAME:-}
+      - INOVAR_PASSWORD=${INOVAR_PASSWORD:-}
       - INOVAR_URL=${INOVAR_URL:-https://epralima.inovarmais.com/alunos/Inicial.wgx}
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - prof-net
+      - default
 
   db:
     image: postgres:15-alpine
@@ -34,6 +38,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - default
 
 volumes:
   postgres_data:
+
+networks:
+  prof-net:
+    external: true
+  default:

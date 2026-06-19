@@ -59,19 +59,19 @@ class Settings(BaseSettings):
     # If any are absent, the env-only path is used.
     vault_addr: str = ""
     vault_role_id: str = ""
-    vault_secret_id: str = ""
+    vault_secret_id: SecretStr = SecretStr("")
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     def model_post_init(self, __context) -> None:
         """Overwrite Inovar credentials from Vault when configured."""
-        if not (self.vault_addr and self.vault_role_id and self.vault_secret_id):
+        if not (self.vault_addr and self.vault_role_id and self.vault_secret_id.get_secret_value()):
             return  # env-only path — nothing to do
 
         vc = VaultClient(
             vault_addr=self.vault_addr,
             role_id=self.vault_role_id,
-            secret_id=self.vault_secret_id,
+            secret_id=self.vault_secret_id.get_secret_value(),
         )
         vc.login()  # raises VaultUnavailableError or VaultAuthError on failure
         creds = vc.read_inovar_credentials()  # raises VaultSecretNotFoundError if absent

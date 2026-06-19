@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import re
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from pydantic import SecretStr
 
 from app.exceptions import (
     InovarAuthError,
@@ -64,10 +65,16 @@ class InovarScraperService:
         inovar_url: Base URL of the Inovar login page.
     """
 
-    def __init__(self, username: str, password: str, inovar_url: str) -> None:
+    def __init__(self, username: str, password: Union[str, SecretStr], inovar_url: str) -> None:
         self.username   = username
-        self.password   = password
+        self.password   = password if isinstance(password, SecretStr) else SecretStr(password)
         self.inovar_url = inovar_url
+
+    def __repr__(self) -> str:
+        return f"InovarScraperService(username={self.username!r}, inovar_url={self.inovar_url!r})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
 
     # ------------------------------------------------------------------
     # Public API
@@ -139,7 +146,7 @@ class InovarScraperService:
             )
 
         await page.fill("#TRG_62", self.username)
-        await page.fill("#TRG_61", self.password)
+        await page.fill("#TRG_61", self.password.get_secret_value())
         await page.press("#TRG_61", "Enter")
 
         # Wait for the Gizmox main UI to bootstrap after login.

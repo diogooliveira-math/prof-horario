@@ -1,0 +1,53 @@
+version: "3.8"
+
+# docker-compose.vault.yml
+#
+# Run ALONGSIDE docker-compose.yml — do NOT merge into it.
+# The two stacks communicate via the external Docker network prof-net.
+#
+# Startup order:
+#   1. docker network create prof-net          (once per host)
+#   2. docker compose -f docker-compose.vault.yml up -d
+#   3. vault/bootstrap.sh <root-token>         (once per fresh Vault)
+#   4. docker compose up -d
+#
+# After any host reboot Vault wakes up SEALED.  Unseal before starting
+# the FastAPI container or it will fail readiness with VaultUnavailableError.
+
+services:
+  vault:
+    image: hashicorp/vault:1.15.4
+    container_name: vault-server
+    ports:
+      - "8200:8200"
+    environment:
+      # VAULT_ADDR must point to the container's own listener, NOT 127.0.0.1.
+      # If set to 127.0.0.1, the vault CLI inside the container cannot reach
+      # the TCP listener bound to 0.0.0.0 — the health check would always fail.
+      - VAULT_ADDR=http://0.0.0.0:8200
+      - VAULT_API_ADDR=http://vault:8200
+      - VAULT_CLUSTER_ADDR=http://vault:8201
+    volumes:
+      - ./vault/vault-config.hcl:/vault/config/vault-config.hcl:ro
+      - vault-data:/vault/file
+    # IPC_LOCK: prevents OS from swapping Vault memory to disk.
+    # Without it, raw secret material can appear in the swap partition.
+    cap_add:
+      - IPC_LOCK
+    command: server -config=/vault/config/vault-config.hcl
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://0.0.0.0:8200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - prof-net
+
+volumes:
+  vault-data:
+
+networks:
+  prof-net:
+    external: true

@@ -108,7 +108,7 @@ async def sync_horarios(
     """
     scraper = InovarScraperService(
         username=settings.inovar_username,
-        password=settings.inovar_password.get_secret_value(),
+        password=settings.inovar_password,
         inovar_url=settings.inovar_url,
     )
 
