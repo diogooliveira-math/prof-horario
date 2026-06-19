@@ -1,7 +1,13 @@
+"""
+This defines the Horario Repository, with asynchronous behaviour.
+It uses the Horario model.
+"""
+
 from typing import Any, Sequence
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.horario import Horario
+
 
 class HorarioRepository:
     """
@@ -24,7 +30,7 @@ class HorarioRepository:
 
     async def exists(self, dedupe_keys: dict[str, Any]) -> bool:
         """Isolated verification helper—business logic handles the rest."""
-        stmt = select(func.count()).select_from(Horario).filter_by(**dedupe_keys)
+        stmt = select(select(Horario).filter_by(**dedupe_keys).exists())
         result = await self.session.execute(stmt)
         return (result.scalar() or 0) > 0
 
