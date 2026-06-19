@@ -3,3 +3,14 @@
 __pycache__/
 .env
 .pytest_cache/
+
+
+# Python virtual environment
+.venv/
+venv/
+
+# Editor backup/autosave files
+*~
+\#*\#
+
+.gitignore
