@@ -1,9 +1,19 @@
 """
-Step 1 — RED phase: inovar-to-horario data mapper.
+Step 1 — GREEN (corrected): inovar-to-horario data mapper.
 
 map_inovar_to_horarios() is a pure function — no I/O, no network, no mocking.
-It takes the dict that extract_schedule_by_date() produces in the legacy project
-and returns a list of dicts that each satisfy HorarioCreateSchema.
+
+IMPORTANT DOMAIN FACT: Inovar's hour codes (800, 900, ...) are slot labels, not
+literal clock times. The real institution bell schedule is:
+  800  -> 08:50-09:40    1200 -> 12:35-13:25
+  900  -> 09:45-10:35    1300 -> 13:30-14:20
+  1000 -> 10:45-11:35    1400 -> 14:25-15:15
+  1100 -> 11:40-12:30    1500 -> 15:20-16:10
+                         1600 -> 16:15-17:05
+
+This came from TeacherDataConverter.REFERENCE['hour'] in the legacy project
+(commands/utils/utils_teacher.py). The mapper must use this lookup, not a
+naive `hour // 100` arithmetic, or every start time will be ~50 min wrong.
 """
 from datetime import date, time
 
@@ -19,15 +29,17 @@ def test_single_item_lesson_date():
 
 
 def test_single_item_start_time():
+    """800 slot starts at 08:50, not 08:00 — institution bell schedule."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "MATEM", "hour": 800}]})
-    assert result[0]["start_time"] == time(8, 0)
+    assert result[0]["start_time"] == time(8, 50)
 
 
-def test_single_item_end_time_is_50_min_after_start():
+def test_single_item_end_time():
+    """800 slot ends at 09:40."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "MATEM", "hour": 800}]})
-    assert result[0]["end_time"] == time(8, 50)
+    assert result[0]["end_time"] == time(9, 40)
 
 
 def test_single_item_class_name():
@@ -55,33 +67,37 @@ def test_single_item_module_ref_is_none():
 
 
 # ---------------------------------------------------------------------------
-# Time slot variations
+# Time slot variations — real bell schedule
 # ---------------------------------------------------------------------------
 
 def test_hour_900_maps_start_time():
+    """900 slot starts at 09:45."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "X", "hour": 900}]})
-    assert result[0]["start_time"] == time(9, 0)
+    assert result[0]["start_time"] == time(9, 45)
 
 
 def test_hour_900_maps_end_time():
+    """900 slot ends at 10:35."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "X", "hour": 900}]})
-    assert result[0]["end_time"] == time(9, 50)
+    assert result[0]["end_time"] == time(10, 35)
 
 
 def test_hour_1400_maps_correctly():
+    """1400 slot: 14:25-15:15."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "X", "hour": 1400}]})
-    assert result[0]["start_time"] == time(14, 0)
-    assert result[0]["end_time"] == time(14, 50)
+    assert result[0]["start_time"] == time(14, 25)
+    assert result[0]["end_time"] == time(15, 15)
 
 
-def test_hour_1600_end_time_does_not_overflow():
-    """16:00 + 50 min = 16:50 — still same hour, no overflow into next day."""
+def test_hour_1600_maps_correctly():
+    """1600 slot: 16:15-17:05."""
     from app.services.inovar_mapper import map_inovar_to_horarios
     result = map_inovar_to_horarios({"20-06-2026": [{"class_name": "11B", "inovar_classroom": "X", "hour": 1600}]})
-    assert result[0]["end_time"] == time(16, 50)
+    assert result[0]["start_time"] == time(16, 15)
+    assert result[0]["end_time"] == time(17, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +155,7 @@ def test_date_with_empty_class_list_produces_no_items():
 
 def test_does_not_raise_for_any_valid_hour_in_school_range():
     from app.services.inovar_mapper import map_inovar_to_horarios
-    for hour in range(700, 1701, 100):
+    for hour in [800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600]:
         payload = {"20-06-2026": [{"class_name": "11B", "inovar_classroom": "X", "hour": hour}]}
         result = map_inovar_to_horarios(payload)
         assert len(result) == 1

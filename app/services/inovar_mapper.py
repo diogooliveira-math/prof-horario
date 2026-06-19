@@ -1,11 +1,22 @@
 """
 app/services/inovar_mapper.py
 
-Pure function: converts the dict produced by the legacy
-extract_schedule_by_date() into a list of dicts that each
-satisfy HorarioCreateSchema.
+Pure function: converts the dict produced by extract_schedule_by_date()
+into a list of dicts that each satisfy HorarioCreateSchema.
 
 No I/O.  No side-effects.  Safe to call in tests with zero mocking.
+
+DOMAIN FACT — Inovar hour codes are slot labels, not clock times.
+The source of truth is TeacherDataConverter.REFERENCE['hour'] in the
+legacy project (commands/utils/utils_teacher.py). Doing `hour // 100`
+would place every lesson ~50 minutes early.
+
+Bell schedule (epralima institution):
+    800  -> 08:50-09:40    1200 -> 12:35-13:25
+    900  -> 09:45-10:35    1300 -> 13:30-14:20
+    1000 -> 10:45-11:35    1400 -> 14:25-15:15
+    1100 -> 11:40-12:30    1500 -> 15:20-16:10
+                           1600 -> 16:15-17:05
 
 Inovar schedule shape (input)
 ------------------------------
@@ -14,7 +25,7 @@ Inovar schedule shape (input)
         {
             "class_name":       str,   # e.g. "11B"
             "inovar_classroom": str,   # e.g. "MATEM - 11 N1 / 11 N2 - AV-08"
-            "hour":             int,   # e.g. 800  (= 08:00)
+            "hour":             int,   # e.g. 800  (slot label, NOT 08:00)
         },
         ...
     ],
@@ -30,43 +41,31 @@ HorarioCreateSchema shape (output per item)
     "description":  str,           # synthesised: "Aula de <class_name>"
     "lesson_date":  date,
     "start_time":   time,
-    "end_time":     time,          # start + LESSON_DURATION_MINUTES
+    "end_time":     time,
 }
 """
 from __future__ import annotations
 
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime
 from typing import Any
-
-# Named constant — one place to change if the institution changes lesson length.
-LESSON_DURATION_MINUTES: int = 50
 
 # Date format used by the Inovar HTML parser in the legacy project.
 _INOVAR_DATE_FMT: str = "%d-%m-%Y"
 
-
-def _parse_hour(hour: int) -> time:
-    """Convert a 3-or-4-digit Inovar hour integer to a datetime.time.
-
-    Inovar encodes times as plain integers where the hundreds digit(s)
-    are the hour and the last two digits are the minute:
-        800  -> time(8, 0)
-        900  -> time(9, 0)
-        1400 -> time(14, 0)
-    """
-    h, m = divmod(hour, 100)
-    return time(h, m)
-
-
-def _end_time(start: time) -> time:
-    """Add LESSON_DURATION_MINUTES to *start* and return the resulting time.
-
-    Uses a datetime sentinel date to perform arithmetic safely without
-    implementing manual minute-carry logic.
-    """
-    sentinel = datetime(2000, 1, 1, start.hour, start.minute)
-    end_dt = sentinel + timedelta(minutes=LESSON_DURATION_MINUTES)
-    return end_dt.time()
+# Real institution bell schedule.
+# Key = Inovar hour code (int), Value = (start_time, end_time).
+# Source: TeacherDataConverter.REFERENCE['hour'] in commands/utils/utils_teacher.py
+BELL_SCHEDULE: dict[int, tuple[time, time]] = {
+    800:  (time(8,  50), time(9,  40)),
+    900:  (time(9,  45), time(10, 35)),
+    1000: (time(10, 45), time(11, 35)),
+    1100: (time(11, 40), time(12, 30)),
+    1200: (time(12, 35), time(13, 25)),
+    1300: (time(13, 30), time(14, 20)),
+    1400: (time(14, 25), time(15, 15)),
+    1500: (time(15, 20), time(16, 10)),
+    1600: (time(16, 15), time(17,  5)),
+}
 
 
 def map_inovar_to_horarios(
@@ -81,6 +80,9 @@ def map_inovar_to_horarios(
     Returns:
         A flat list of dicts, one per class-slot, ready to be unpacked into
         HorarioCreateSchema(**item).  Returns an empty list for an empty schedule.
+
+    Raises:
+        ValueError: If an hour code is not present in BELL_SCHEDULE.
     """
     result: list[dict[str, Any]] = []
 
@@ -88,7 +90,14 @@ def map_inovar_to_horarios(
         lesson_date: date = datetime.strptime(date_str, _INOVAR_DATE_FMT).date()
 
         for slot in slots:
-            start: time = _parse_hour(slot["hour"])
+            hour: int = slot["hour"]
+            if hour not in BELL_SCHEDULE:
+                valid = sorted(BELL_SCHEDULE.keys())
+                raise ValueError(
+                    f"Unknown Inovar hour code {hour!r}. "
+                    f"Valid codes: {valid}"
+                )
+            start, end = BELL_SCHEDULE[hour]
             result.append(
                 {
                     "class_name":  slot["class_name"],
@@ -97,7 +106,7 @@ def map_inovar_to_horarios(
                     "description": f"Aula de {slot['class_name']}",
                     "lesson_date": lesson_date,
                     "start_time":  start,
-                    "end_time":    _end_time(start),
+                    "end_time":    end,
                 }
             )
 
