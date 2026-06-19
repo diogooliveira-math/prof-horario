@@ -1,6 +1,9 @@
 from fastapi import FastAPI
+from app.routers import horario as horario_router
 
 app = FastAPI(title="Prof Service")
+
+app.include_router(horario_router.router)
 
 
 @app.get("/health", status_code=200)
