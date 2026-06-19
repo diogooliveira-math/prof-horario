@@ -1,7 +1,9 @@
 import pytest
-from httpx import AsyncClient, ASGITransport 
+from datetime import date, time, datetime
+from uuid import uuid4
+from httpx import AsyncClient, ASGITransport
 from fastapi import status
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.main import app
 from app.database import get_db_session
@@ -75,5 +77,84 @@ async def test_create_horario_duplicate_conflict(mock_repo_class, valid_horario_
     assert "already been scheduled" in response.json()["detail"]
     mock_repo_instance.add.assert_not_called()
     mock_db_session.commit.assert_not_called()
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_horario_mock(**overrides):
+    """Build a fake Horario ORM object suitable for mock returns."""
+    obj = MagicMock()
+    obj.id          = overrides.get("id",          uuid4())
+    obj.class_name  = overrides.get("class_name",  "12B")
+    obj.classroom   = overrides.get("classroom",   "Sala 102")
+    obj.module_ref  = overrides.get("module_ref",  "A3_Derivadas")
+    obj.description = overrides.get("description", "Introducao as derivadas")
+    obj.lesson_date = overrides.get("lesson_date", date(2026, 6, 20))
+    obj.start_time  = overrides.get("start_time",  time(9, 0))
+    obj.end_time    = overrides.get("end_time",    time(10, 30))
+    obj.created_at  = overrides.get("created_at",  datetime(2026, 6, 19, 8, 0, 0))
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/horarios
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_list_horarios_returns_empty_list(mock_repo_class):
+    """
+    TDD Test: When no records exist the endpoint must return HTTP 200
+    with an empty JSON array — never 404 or 500.
+    """
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_all.return_value = []
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/horarios")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+    mock_repo_instance.get_all.assert_called_once()
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_list_horarios_returns_all_records(mock_repo_class):
+    """
+    TDD Test: When records exist the endpoint must return HTTP 200
+    with a JSON array containing one entry per ORM object, serialised
+    with the expected field names and values.
+    """
+    fake = _make_horario_mock()
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_all.return_value = [fake]
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/horarios")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert len(body) == 1
+    item = body[0]
+    assert item["class_name"]  == fake.class_name
+    assert item["classroom"]   == fake.classroom
+    assert item["lesson_date"] == str(fake.lesson_date)
+    assert item["start_time"]  == fake.start_time.strftime("%H:%M:%S")
+    assert item["end_time"]    == fake.end_time.strftime("%H:%M:%S")
 
     app.dependency_overrides.clear()
