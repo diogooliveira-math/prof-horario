@@ -1,18 +1,20 @@
 """
-Sets up the logic for the Horario Router, so it later connects to the fastapi instance. It defines the basic logic.
+Sets up the logic for the Horario Router, so it later connects to the fastapi instance.
+It defines the basic logic.
 """
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
+from app.exceptions import DuplicateHorarioError, HorarioNotFoundError
 from app.models.horario import Horario
 from app.repositories.horario import HorarioRepository
 from app.schemas.horario import HorarioCreateSchema, HorarioReadSchema
 
 router = APIRouter(
     prefix="/api/v1/horarios",
-    tags=["Horarios"]
+    tags=["Horarios"],
 )
 
 
@@ -27,17 +29,14 @@ async def get_horario(horario_id: UUID, db: AsyncSession = Depends(get_db_sessio
     repo = HorarioRepository(db)
     horario = await repo.get_by_id(horario_id)
     if horario is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Horario with id '{horario_id}' not found."
-        )
+        raise HorarioNotFoundError(horario_id)
     return horario
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_horario(
     payload: HorarioCreateSchema,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ):
     repo = HorarioRepository(db)
 
@@ -48,10 +47,7 @@ async def create_horario(
     }
 
     if await repo.exists(dedupe_keys):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A lesson has already been scheduled for this class at this specific time slot."
-        )
+        raise DuplicateHorarioError()
 
     new_horario = Horario(
         class_name=payload.class_name,
@@ -60,7 +56,7 @@ async def create_horario(
         description=payload.description,
         lesson_date=payload.lesson_date,
         start_time=payload.start_time,
-        end_time=payload.end_time
+        end_time=payload.end_time,
     )
 
     await repo.add(new_horario)
@@ -68,7 +64,7 @@ async def create_horario(
 
     return {
         "status": "success",
-        "id": str(new_horario.id)
+        "id": str(new_horario.id),
     }
 
 
@@ -77,9 +73,6 @@ async def delete_horario(horario_id: UUID, db: AsyncSession = Depends(get_db_ses
     repo = HorarioRepository(db)
     horario = await repo.get_by_id(horario_id)
     if horario is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Horario with id '{horario_id}' not found."
-        )
+        raise HorarioNotFoundError(horario_id)
     await repo.delete(horario)
     await db.commit()
