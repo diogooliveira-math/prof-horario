@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-with-version: '3.11'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: Install Linting Tools
@@ -25,6 +25,12 @@ jobs:
 
       - name: Run Ruff Linter
         run: ruff check app/
+
+      - name: Run Test Suite
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+        run: |
+          pytest
 
   build-image:
     needs: lint

@@ -9,6 +9,7 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy models mapping to Postgres."""
     pass
 
+
 class Horario(Base):
     __tablename__ = "horarios"
 
