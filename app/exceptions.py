@@ -52,3 +52,46 @@ class DuplicateHorarioError(DomainError):
         message: str = "A lesson has already been scheduled for this class at this specific time slot.",
     ):
         super().__init__(message)
+
+
+class InovarAuthError(DomainError):
+    """Raised when Inovar rejects the credentials or the login form never appeared."""
+
+    status_code = 401
+    error_code = "INOVAR_AUTH_ERROR"
+
+    def __init__(
+        self,
+        message: str = "Inovar authentication failed: login form did not appear or credentials were rejected.",
+    ):
+        super().__init__(message)
+
+
+class InovarNavigationError(DomainError):
+    """Raised when a Playwright navigation step inside Inovar fails or times out."""
+
+    status_code = 502
+    error_code = "INOVAR_NAVIGATION_ERROR"
+
+    def __init__(
+        self,
+        message: str = "Inovar navigation failed: a required page element did not appear within the timeout.",
+    ):
+        super().__init__(message)
+
+
+class InovarEmptyScheduleError(DomainError):
+    """Raised when Inovar loads successfully but the week contains no schedule events.
+
+    status_code 200 because an empty week is a legitimate domain outcome
+    (holiday, exam period, etc.), not a server or client error.
+    """
+
+    status_code = 200
+    error_code = "INOVAR_EMPTY_SCHEDULE"
+
+    def __init__(
+        self,
+        message: str = "Inovar returned no schedule events for the requested week.",
+    ):
+        super().__init__(message)
