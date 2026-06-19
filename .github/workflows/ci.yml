@@ -19,9 +19,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Linting Tools
+      - name: Install dependencies
         run: |
-          pip install ruff
+          pip install -r requirements.txt
 
       - name: Run Ruff Linter
         run: ruff check app/
