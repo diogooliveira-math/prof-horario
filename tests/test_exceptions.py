@@ -94,3 +94,40 @@ def test_duplicate_horario_error_custom_message():
     msg = "This slot is already taken."
     exc = DuplicateHorarioError(msg)
     assert exc.message == msg
+
+
+# ---------------------------------------------------------------------------
+# Class-level HTTP metadata attributes (polymorphic dispatch)
+# ---------------------------------------------------------------------------
+
+def test_domain_error_has_status_code_400():
+    assert DomainError.status_code == 400
+
+
+def test_domain_error_has_error_code_bad_request():
+    assert DomainError.error_code == "BAD_REQUEST"
+
+
+def test_not_found_error_has_status_code_404():
+    assert NotFoundError.status_code == 404
+
+
+def test_not_found_error_has_error_code_not_found():
+    assert NotFoundError.error_code == "NOT_FOUND"
+
+
+def test_horario_not_found_error_inherits_status_code_404():
+    # inherits from NotFoundError — no override needed
+    assert HorarioNotFoundError.status_code == 404
+
+
+def test_horario_not_found_error_has_own_error_code():
+    assert HorarioNotFoundError.error_code == "HORARIO_NOT_FOUND"
+
+
+def test_duplicate_horario_error_has_status_code_409():
+    assert DuplicateHorarioError.status_code == 409
+
+
+def test_duplicate_horario_error_has_error_code():
+    assert DuplicateHorarioError.error_code == "DUPLICATE_HORARIO"

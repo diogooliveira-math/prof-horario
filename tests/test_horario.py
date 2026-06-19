@@ -91,7 +91,7 @@ async def test_create_horario_duplicate_conflict(mock_repo_class, valid_horario_
         response = await client.post("/api/v1/horarios", json=valid_horario_payload)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "already been scheduled" in response.json()["detail"]
+    assert "already been scheduled" in response.json()["error"]["message"]
     mock_repo_instance.add.assert_not_called()
     mock_db_session.commit.assert_not_called()
 
@@ -209,7 +209,7 @@ async def test_get_horario_by_id_returns_404_when_not_found(mock_repo_class):
         response = await client.get(f"/api/v1/horarios/{missing_id}")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert "not found" in response.json()["detail"].lower()
+    assert "not found" in response.json()["error"]["message"].lower()
 
     app.dependency_overrides.clear()
 
@@ -264,7 +264,7 @@ async def test_delete_horario_returns_404_when_not_found(mock_repo_class):
         response = await client.delete(f"/api/v1/horarios/{missing_id}")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert "not found" in response.json()["detail"].lower()
+    assert "not found" in response.json()["error"]["message"].lower()
     mock_repo_instance.delete.assert_not_called()
     mock_db_session.commit.assert_not_called()
 
