@@ -1,6 +1,7 @@
 """
 Sets up the logic for the Horario Router, so it later connects to the fastapi instance. It defines the basic logic.
 """
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,18 @@ router = APIRouter(
 async def list_horarios(db: AsyncSession = Depends(get_db_session)):
     repo = HorarioRepository(db)
     return await repo.get_all()
+
+
+@router.get("/{horario_id}", response_model=HorarioReadSchema, status_code=status.HTTP_200_OK)
+async def get_horario(horario_id: UUID, db: AsyncSession = Depends(get_db_session)):
+    repo = HorarioRepository(db)
+    horario = await repo.get_by_id(horario_id)
+    if horario is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Horario with id '{horario_id}' not found."
+        )
+    return horario
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -57,3 +70,16 @@ async def create_horario(
         "status": "success",
         "id": str(new_horario.id)
     }
+
+
+@router.delete("/{horario_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_horario(horario_id: UUID, db: AsyncSession = Depends(get_db_session)):
+    repo = HorarioRepository(db)
+    horario = await repo.get_by_id(horario_id)
+    if horario is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Horario with id '{horario_id}' not found."
+        )
+    await repo.delete(horario)
+    await db.commit()

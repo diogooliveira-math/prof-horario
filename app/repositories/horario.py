@@ -4,7 +4,8 @@ It uses the Horario model.
 """
 
 from typing import Any, Sequence
-from sqlalchemy import select, func
+from uuid import UUID
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.horario import Horario
 
@@ -37,5 +38,16 @@ class HorarioRepository:
     async def add(self, horario_obj: Horario) -> Horario:
         """Persists the object instance to the tracking session."""
         self.session.add(horario_obj)
-        await self.session.flush() 
+        await self.session.flush()
         return horario_obj
+
+    async def get_by_id(self, horario_id: UUID) -> Horario | None:
+        """Fetches a single schedule by its primary key. Returns None if absent."""
+        result = await self.session.execute(
+            select(Horario).where(Horario.id == horario_id)
+        )
+        return result.scalars().first()
+
+    async def delete(self, horario_obj: Horario) -> None:
+        """Removes the given instance from the session (caller must commit)."""
+        await self.session.delete(horario_obj)

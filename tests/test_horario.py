@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.main import app
 from app.database import get_db_session
 
-# Dummy schema payload to match our router's expectations
+
+# ---------------------------------------------------------------------------
+# Fixtures & Helpers
+# ---------------------------------------------------------------------------
+
 @pytest.fixture
 def valid_horario_payload():
     return {
@@ -18,72 +22,9 @@ def valid_horario_payload():
         "description": "Introducao as derivadas",
         "lesson_date": "2026-06-20",
         "start_time": "09:00",
-        "end_time": "10:30"
+        "end_time": "10:30",
     }
 
-@pytest.mark.asyncio
-@patch("app.routers.horario.HorarioRepository")
-async def test_create_horario_success(mock_repo_class, valid_horario_payload):
-    """
-    TDD Test: Verifies that a valid payload yields a HTTP 201 Created status
-    and successfully invokes the repository persistence layer.
-    """
-    # 1. Arrange: Setup the mock repository instance
-    mock_repo_instance = AsyncMock()
-    mock_repo_instance.exists.return_value = False  # No duplicates exist
-    mock_repo_class.return_value = mock_repo_instance
-
-    # Mock the database session dependency bypass
-    mock_db_session = AsyncMock()
-    app.dependency_overrides[get_db_session] = lambda: mock_db_session
-
-    # 2. Act: Dispatch request using HTTPX AsyncClient against our real FastAPI router
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/api/v1/horarios", json=valid_horario_payload)
-
-    # 3. Assert: Verify behaviors
-    assert response.status_code == status.HTTP_201_CREATED
-    assert response.json()["status"] == "success"
-    assert "id" in response.json()
-    
-    mock_repo_instance.exists.assert_called_once()
-    mock_repo_instance.add.assert_called_once()
-    mock_db_session.commit.assert_called_once()
-
-    # Clean up overrides
-    app.dependency_overrides.clear()
-
-@pytest.mark.asyncio
-@patch("app.routers.horario.HorarioRepository")
-async def test_create_horario_duplicate_conflict(mock_repo_class, valid_horario_payload):
-    """
-    TDD Test: Verifies that if the repository reports a duplicate entry exists,
-    the router short-circuits with a HTTP 409 Conflict.
-    """
-    # 1. Arrange: Enforce a simulated database collision
-    mock_repo_instance = AsyncMock()
-    mock_repo_instance.exists.return_value = True  # Duplicate exists!
-    mock_repo_class.return_value = mock_repo_instance
-
-    mock_db_session = AsyncMock()
-    app.dependency_overrides[get_db_session] = lambda: mock_db_session
-
-    # 2. Act
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/api/v1/horarios", json=valid_horario_payload)
-
-    # 3. Assert
-    assert response.status_code == status.HTTP_409_CONFLICT
-    assert "already been scheduled" in response.json()["detail"]
-    mock_repo_instance.add.assert_not_called()
-    mock_db_session.commit.assert_not_called()
-
-    app.dependency_overrides.clear()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _make_horario_mock(**overrides):
     """Build a fake Horario ORM object suitable for mock returns."""
@@ -98,6 +39,63 @@ def _make_horario_mock(**overrides):
     obj.end_time    = overrides.get("end_time",    time(10, 30))
     obj.created_at  = overrides.get("created_at",  datetime(2026, 6, 19, 8, 0, 0))
     return obj
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/horarios
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_create_horario_success(mock_repo_class, valid_horario_payload):
+    """
+    TDD Test: Verifies that a valid payload yields a HTTP 201 Created status
+    and successfully invokes the repository persistence layer.
+    """
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.exists.return_value = False
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/horarios", json=valid_horario_payload)
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["status"] == "success"
+    assert "id" in response.json()
+
+    mock_repo_instance.exists.assert_called_once()
+    mock_repo_instance.add.assert_called_once()
+    mock_db_session.commit.assert_called_once()
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_create_horario_duplicate_conflict(mock_repo_class, valid_horario_payload):
+    """
+    TDD Test: Verifies that if the repository reports a duplicate entry exists,
+    the router short-circuits with a HTTP 409 Conflict.
+    """
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.exists.return_value = True
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/horarios", json=valid_horario_payload)
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "already been scheduled" in response.json()["detail"]
+    mock_repo_instance.add.assert_not_called()
+    mock_db_session.commit.assert_not_called()
+
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -156,5 +154,118 @@ async def test_list_horarios_returns_all_records(mock_repo_class):
     assert item["lesson_date"] == str(fake.lesson_date)
     assert item["start_time"]  == fake.start_time.strftime("%H:%M:%S")
     assert item["end_time"]    == fake.end_time.strftime("%H:%M:%S")
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/horarios/{id}
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_get_horario_by_id_returns_record(mock_repo_class):
+    """
+    TDD Test: When the id exists the endpoint must return HTTP 200
+    with the full serialised record.
+    """
+    fake = _make_horario_mock()
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_by_id.return_value = fake
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/horarios/{fake.id}")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["class_name"]  == fake.class_name
+    assert body["classroom"]   == fake.classroom
+    assert body["lesson_date"] == str(fake.lesson_date)
+    mock_repo_instance.get_by_id.assert_called_once_with(fake.id)
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_get_horario_by_id_returns_404_when_not_found(mock_repo_class):
+    """
+    TDD Test: When the id does not exist the endpoint must return
+    HTTP 404 Not Found with a descriptive detail message.
+    """
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_by_id.return_value = None
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    missing_id = uuid4()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/horarios/{missing_id}")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "not found" in response.json()["detail"].lower()
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/horarios/{id}
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_delete_horario_returns_204_when_found(mock_repo_class):
+    """
+    TDD Test: When the id exists the endpoint must delete it and return
+    HTTP 204 No Content — no body, no noise.
+    """
+    fake = _make_horario_mock()
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_by_id.return_value = fake
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.delete(f"/api/v1/horarios/{fake.id}")
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.content == b""  # truly empty body
+    mock_repo_instance.get_by_id.assert_called_once_with(fake.id)
+    mock_repo_instance.delete.assert_called_once_with(fake)
+    mock_db_session.commit.assert_called_once()
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+@patch("app.routers.horario.HorarioRepository")
+async def test_delete_horario_returns_404_when_not_found(mock_repo_class):
+    """
+    TDD Test: When the id does not exist the endpoint must return
+    HTTP 404 Not Found and must not attempt any deletion.
+    """
+    mock_repo_instance = AsyncMock()
+    mock_repo_instance.get_by_id.return_value = None
+    mock_repo_class.return_value = mock_repo_instance
+
+    mock_db_session = AsyncMock()
+    app.dependency_overrides[get_db_session] = lambda: mock_db_session
+
+    missing_id = uuid4()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.delete(f"/api/v1/horarios/{missing_id}")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "not found" in response.json()["detail"].lower()
+    mock_repo_instance.delete.assert_not_called()
+    mock_db_session.commit.assert_not_called()
 
     app.dependency_overrides.clear()
