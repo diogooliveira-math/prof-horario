@@ -3,7 +3,7 @@
 # are compiled against the SAME Python ABI that will run the app.
 # The two-stage builder pattern breaks for pydantic-core/.so when the builder's
 # Python minor version differs from the Playwright base image's Python version.
-FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy AS runner
+FROM mcr.microsoft.com/playwright/python:v1.60.0-jammy AS runner
 
 WORKDIR /app
 
