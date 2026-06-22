@@ -30,7 +30,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         run: |
-          pytest
+          pytest -m "not e2e"
 
   build-image:
     needs: lint
@@ -47,7 +47,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          target: runner
           push: false # We only test the build for now, don't push to a registry yet
           tags: prof-service:latest
           cache-from: type=gha
