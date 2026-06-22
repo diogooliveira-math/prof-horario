@@ -171,8 +171,9 @@ def test_startup_with_vault_unreachable_raises_runtime_error_with_clear_message(
 
         with pytest.raises(RuntimeError) as exc_info:
             from fastapi.testclient import TestClient
-            with TestClient(main_module.app):
-                pass  # lifespan fires on enter
+            with patch("app.main._init_db", new=AsyncMock()):
+                with TestClient(main_module.app):
+                    pass  # lifespan fires on enter
 
     message = str(exc_info.value).lower()
     assert "vault" in message, (

@@ -10,22 +10,34 @@ from app.routers import horario as horario_router
 _vault_status: str = "not_configured"
 
 
-@asynccontextmanager
+async def _init_db() -> None:
+    """Create all SQLAlchemy tables if they don't exist yet (idempotent)."""
+    from app.database import engine
+    from app.models.horario import Base
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 async def lifespan(app: FastAPI):
     """
-    Startup validation: eagerly call get_settings() so credential errors
-    are caught at boot time rather than silently on the first request.
+    Startup:
+      1. Create database tables if they don't exist yet (idempotent).
+      2. Validate credentials — eagerly call get_settings() so Vault
+         errors are caught at boot time rather than silently on the
+         first request.
 
     If Vault is configured but unreachable (sealed, wrong address, etc.)
     we raise RuntimeError with a clear human-readable message so the
     container exits with a meaningful log line instead of a traceback.
-    An operator seeing 'Vault is sealed or unreachable' knows exactly
-    what to do: run vault operator unseal.
 
     If Vault is not configured (VAULT_ADDR absent) we proceed normally —
     the env-only credential path is valid for local development.
     """
     global _vault_status
+
+    # --- Step 1: ensure the horarios table exists ----------------------
+    await _init_db()
+
 
     from app.config import get_settings
     from app.exceptions import VaultUnavailableError, VaultAuthError

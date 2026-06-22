@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     vault_role_id: str = ""
     vault_secret_id: SecretStr = SecretStr("")
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     def model_post_init(self, __context) -> None:
         """Overwrite Inovar credentials from Vault when configured."""

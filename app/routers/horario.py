@@ -2,11 +2,14 @@
 Sets up the logic for the Horario Router, so it later connects to the fastapi instance.
 It defines the basic logic.
 """
+import csv
+import io
 import logging
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -149,3 +152,51 @@ async def sync_horarios(
     )
 
     return {"inserted": inserted, "skipped": skipped, "errors": errors}
+
+
+@router.get("/export/csv", status_code=status.HTTP_200_OK)
+async def export_horarios_csv(db: AsyncSession = Depends(get_db_session)):
+    """Export all stored horarios as a CSV file compatible with sync-to-outlook.ps1.
+
+    The CSV shape matches what the legacy sync-to-outlook.ps1 PowerShell script
+    expects:
+        date          — lesson date in dd-mm-yyyy format
+        class_name    — short class identifier (e.g. "11B")
+        inovar_classroom — room string as scraped from Inovar (e.g. "AV-08")
+        hour          — Inovar-style integer slot code (e.g. 850 for 08:50)
+        fetched_at    — ISO timestamp when the record was created in this service
+
+    The `hour` value is reconstructed from start_time: HH*100 + MM (e.g. 08:50
+    -> 850).  This is the same encoding the legacy TeacherDataConverter uses
+    and what sync-to-outlook.ps1 reads via `$hourInt = [int]$entry.hour`.
+    """
+    repo = HorarioRepository(db)
+    horarios = await repo.get_all()
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["date", "class_name", "inovar_classroom", "hour", "fetched_at"],
+    )
+    writer.writeheader()
+
+    for h in horarios:
+        # Reconstruct the Inovar-style integer hour code from start_time.
+        # time(8, 50)  -> 850
+        # time(10, 45) -> 1045
+        hour_code = h.start_time.hour * 100 + h.start_time.minute
+
+        writer.writerow({
+            "date":             h.lesson_date.strftime("%d-%m-%Y"),
+            "class_name":       h.class_name,
+            "inovar_classroom": h.classroom or "",
+            "hour":             hour_code,
+            "fetched_at":       h.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=horario.csv"},
+    )
